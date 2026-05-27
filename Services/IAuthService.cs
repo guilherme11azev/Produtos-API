@@ -6,4 +6,5 @@ public interface IAuthService
 {
     Task<TokenResponseDTO?> RegisterAsync(RegisterDTO dto);
     Task<TokenResponseDTO?> LoginAsync(LoginDTO dto);
+    Task<bool> MakeAdminAsync(int userId);
 }

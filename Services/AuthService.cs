@@ -1,7 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using ProductsAPI.Data;
 using ProductsAPI.DTOs;
 using ProductsAPI.Models;
 using ProductsAPI.Repositories;
@@ -12,21 +14,21 @@ public class AuthService : IAuthService
 {
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
+    private readonly AppDbContext _context;
 
-    public AuthService(IUserRepository userRepository, IConfiguration configuration)
+    public AuthService(IUserRepository userRepository, IConfiguration configuration, AppDbContext context)
     {
         _userRepository = userRepository;
         _configuration = configuration;
+        _context = context;
     }
 
     public async Task<TokenResponseDTO?> RegisterAsync(RegisterDTO dto)
     {
-        // Regra de negócio: email já cadastrado
         var emailExists = await _userRepository.EmailExistsAsync(dto.Email);
         if (emailExists)
             return null;
 
-        // Gera o hash da senha — nunca salva em texto puro
         var user = new User
         {
             Name = dto.Name,
@@ -41,17 +43,25 @@ public class AuthService : IAuthService
 
     public async Task<TokenResponseDTO?> LoginAsync(LoginDTO dto)
     {
-        // Busca o usuário pelo email
         var user = await _userRepository.GetByEmailAsync(dto.Email);
         if (user is null)
             return null;
 
-        // Verifica se a senha confere com o hash salvo no banco
         var passwordValid = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
         if (!passwordValid)
             return null;
 
         return GenerateToken(user);
+    }
+
+    public async Task<bool> MakeAdminAsync(int userId)
+    {
+        var user = await _context.Users.FindAsync(userId);
+        if (user is null) return false;
+
+        user.Role = UserRole.Admin;
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     private TokenResponseDTO GenerateToken(User user)
@@ -61,7 +71,6 @@ public class AuthService : IAuthService
         var expirationHours = int.Parse(jwtSettings["ExpirationHours"]!);
         var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
 
-        // Claims são as informações que ficam dentro do token
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -70,11 +79,9 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.Role, user.Role.ToString())
         };
 
-        // Assina o token com a chave secreta
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        // Monta o token JWT
         var token = new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],
             audience: jwtSettings["Audience"],
@@ -85,6 +92,7 @@ public class AuthService : IAuthService
 
         return new TokenResponseDTO
         {
+            Id = user.Id,
             Token = new JwtSecurityTokenHandler().WriteToken(token),
             Name = user.Name,
             Email = user.Email,

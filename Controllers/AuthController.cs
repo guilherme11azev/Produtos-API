@@ -21,7 +21,7 @@ public class AuthController : ControllerBase
         var result = await _authService.RegisterAsync(dto);
 
         if (result is null)
-            return Conflict(new { message = "Email já cadastrado." });
+            return Conflict(new { message = "Email ja cadastrado." });
 
         return CreatedAtAction(nameof(Register), result);
     }
@@ -32,8 +32,19 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(dto);
 
         if (result is null)
-            return Unauthorized(new { message = "Email ou senha inválidos." });
+            return Unauthorized(new { message = "Email ou senha invalidos." });
 
         return Ok(result);
+    }
+
+    [HttpPost("make-admin/{userId}")]
+    public async Task<IActionResult> MakeAdmin(int userId)
+    {
+        var result = await _authService.MakeAdminAsync(userId);
+
+        if (!result)
+            return NotFound(new { message = "Usuario nao encontrado." });
+
+        return Ok(new { message = "Usuario promovido a Admin com sucesso." });
     }
 }
